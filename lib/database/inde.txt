@@ -1,0 +1,145 @@
+-- ========== ENUMS ==========
+create type public.member_role as enum ('leader','co_lead','member','mentor','guest');
+
+-- ========== GROUPS ==========
+create table if not exists public.groups (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  subtitle text,
+  description text,
+  cover_url text,        -- ảnh cover nhóm (nếu có)
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create trigger trg_groups_updated
+before update on public.groups
+for each row execute function public.trigger_set_timestamp();
+
+-- ========== MEMBERS ==========
+create table if not exists public.members (
+  id uuid primary key default gen_random_uuid(),
+  full_name text not null,
+  bio text,
+  role public.member_role not null default 'member',
+  avatar_path text,      -- path trong storage (avatars/...)
+  email text,
+  phone text,
+  socials jsonb default '{}'::jsonb,  -- { "facebook": "...", "github": "...", "linkedin": "...", "youtube": "..." }
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_members_role on public.members(role);
+
+create trigger trg_members_updated
+before update on public.members
+for each row execute function public.trigger_set_timestamp();
+
+-- ========== GROUP_MEMBERS (n-n) ==========
+create table if not exists public.group_members (
+  id bigserial primary key,
+  group_id uuid references public.groups(id) on delete cascade,
+  member_id uuid references public.members(id) on delete cascade,
+  order_index int not null default 0,  -- sắp xếp khi hiển thị (carousel / pageview)
+  title_override text,                 -- tiêu đề hiển thị khác (ví dụ “Mobile Lead”)
+  is_active boolean not null default true,
+  unique (group_id, member_id)
+);
+
+create index if not exists idx_group_members_group on public.group_members(group_id);
+create index if not exists idx_group_members_active on public.group_members(is_active);
+
+-- ========== (Tuỳ chọn) PROFILES để phân quyền admin ==========
+create table if not exists public.profiles (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  display_name text,
+  is_admin boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create trigger trg_profiles_updated
+before update on public.profiles
+for each row execute function public.trigger_set_timestamp();
+
+-- ========== RLS ==========
+alter table public.groups enable row level security;
+alter table public.members enable row level security;
+alter table public.group_members enable row level security;
+alter table public.profiles enable row level security;
+
+-- Helper policy: mọi người đều có thể đọc (public read)
+create policy "groups select public"
+on public.groups for select
+to anon, authenticated
+using (true);
+
+create policy "members select public"
+on public.members for select
+to anon, authenticated
+using (true);
+
+create policy "group_members select public"
+on public.group_members for select
+to anon, authenticated
+using (true);
+
+-- Helper function: kiểm tra admin
+create or replace function public.is_admin()
+returns boolean language sql stable as $$
+  select coalesce(
+    (select p.is_admin from public.profiles p
+     where p.user_id = auth.uid()), false
+  );
+$$;
+
+-- Chỉ admin được insert/update/delete
+create policy "groups write admin only"
+on public.groups for all
+to authenticated
+using (public.is_admin())
+with check (public.is_admin());
+
+create policy "members write admin only"
+on public.members for all
+to authenticated
+using (public.is_admin())
+with check (public.is_admin());
+
+create policy "group_members write admin only"
+on public.group_members for all
+to authenticated
+using (public.is_admin())
+with check (public.is_admin());
+
+-- (Tuỳ chọn) Profiles: chính chủ xem, admin xem/sửa
+create policy "profiles self read"
+on public.profiles for select
+to authenticated
+using (user_id = auth.uid() or public.is_admin());
+
+create policy "profiles self upsert"
+on public.profiles for insert
+to authenticated
+with check (user_id = auth.uid());
+
+create policy "profiles self update"
+on public.profiles for update
+to authenticated
+using (user_id = auth.uid() or public.is_admin())
+with check (user_id = auth.uid() or public.is_admin());
+
+create extension if not exists pgcrypto;
+create extension if not exists "uuid-ossp";
+create or replace function public.trigger_set_timestamp()
+returns trigger
+language plpgsql
+as $$
+begin
+  -- Chỉ set nếu cột updated_at tồn tại
+  -- (Các bảng của bạn đều có cột này theo thiết kế)
+  new.updated_at := now();
+  return new;
+end;
+$$;
