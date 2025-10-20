@@ -7,5 +7,8 @@ public class Product
     public decimal Price { get; set; }
     public string? Image { get; set; }
     public string? Description { get; set; }
-    // Other properties
+    
+    // Category relationship
+    public int? CategoryId { get; set; }
+    public Category? Category { get; set; }
 }

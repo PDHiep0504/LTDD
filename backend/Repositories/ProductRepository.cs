@@ -14,12 +14,16 @@ public class ProductRepository : IProductRepository
 
     public async Task<IEnumerable<Product>> GetProductsAsync()
     {
-        return await _context.Products.ToListAsync();
+        return await _context.Products
+            .Include(p => p.Category)
+            .ToListAsync();
     }
 
     public async Task<Product?> GetProductByIdAsync(int id)
     {
-        return await _context.Products.FindAsync(id);
+        return await _context.Products
+            .Include(p => p.Category)
+            .FirstOrDefaultAsync(p => p.Id == id);
     }
 
     public async Task AddProductAsync(Product product)
@@ -30,8 +34,17 @@ public class ProductRepository : IProductRepository
 
     public async Task UpdateProductAsync(Product product)
     {
-        _context.Entry(product).State = EntityState.Modified;
-        await _context.SaveChangesAsync();
+        var existingProduct = await _context.Products.FindAsync(product.Id);
+        if (existingProduct != null)
+        {
+            existingProduct.Name = product.Name;
+            existingProduct.Price = product.Price;
+            existingProduct.Image = product.Image;
+            existingProduct.Description = product.Description;
+            existingProduct.CategoryId = product.CategoryId;
+            
+            await _context.SaveChangesAsync();
+        }
     }
 
     public async Task DeleteProductAsync(int id)

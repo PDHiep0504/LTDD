@@ -3,8 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../models/product.dart';
+import '../models/category.dart';
 import '../services/product_service.dart';
+import '../services/category_service.dart';
 import '../providers/auth_provider.dart';
+import 'category_management_screen.dart';
 
 class MarketScreen extends StatefulWidget {
   const MarketScreen({super.key});
@@ -15,7 +18,9 @@ class MarketScreen extends StatefulWidget {
 
 class _MarketScreenState extends State<MarketScreen> {
   final _service = ProductService();
+  final _categoryService = CategoryService();
   late Future<List<Product>> _future;
+  int? _selectedCategoryId; // null = show all products
 
   @override
   void initState() {
@@ -36,60 +41,104 @@ class _MarketScreenState extends State<MarketScreen> {
     final imageController = TextEditingController();
     final descController = TextEditingController();
 
+    // Load categories
+    List<Category> categories = [];
+    int? selectedCategoryId;
+    try {
+      categories = await _categoryService.fetchCategories();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Không thể tải danh mục: $e')));
+      }
+    }
+
+    if (!mounted) return;
+
     final result = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Thêm sản phẩm'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameController,
-                decoration: const InputDecoration(
-                  labelText: 'Tên sản phẩm *',
-                  border: OutlineInputBorder(),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Thêm sản phẩm'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Tên sản phẩm *',
+                    border: OutlineInputBorder(),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: priceController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Giá *',
-                  border: OutlineInputBorder(),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: priceController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Giá *',
+                    border: OutlineInputBorder(),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: imageController,
-                decoration: const InputDecoration(
-                  labelText: 'URL hình ảnh',
-                  border: OutlineInputBorder(),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<int?>(
+                  value: selectedCategoryId,
+                  decoration: const InputDecoration(
+                    labelText: 'Danh mục',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: [
+                    const DropdownMenuItem<int?>(
+                      value: null,
+                      child: Text('Không có danh mục'),
+                    ),
+                    ...categories.map(
+                      (cat) => DropdownMenuItem<int?>(
+                        value: cat.id,
+                        child: Text(cat.name),
+                      ),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    setState(() {
+                      selectedCategoryId = value;
+                    });
+                  },
                 ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: descController,
-                maxLines: 3,
-                decoration: const InputDecoration(
-                  labelText: 'Mô tả',
-                  border: OutlineInputBorder(),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: imageController,
+                  decoration: const InputDecoration(
+                    labelText: 'URL hình ảnh',
+                    border: OutlineInputBorder(),
+                  ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 12),
+                TextField(
+                  controller: descController,
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                    labelText: 'Mô tả',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Hủy'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context, true);
+              },
+              child: const Text('Thêm'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Hủy'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Thêm'),
-          ),
-        ],
       ),
     );
 
@@ -108,6 +157,7 @@ class _MarketScreenState extends State<MarketScreen> {
           price: double.tryParse(priceController.text) ?? 0,
           image: imageController.text.isEmpty ? null : imageController.text,
           description: descController.text.isEmpty ? null : descController.text,
+          categoryId: selectedCategoryId,
         );
 
         await _service.addProduct(product);
@@ -137,60 +187,104 @@ class _MarketScreenState extends State<MarketScreen> {
       text: product.description ?? '',
     );
 
+    // Load categories
+    List<Category> categories = [];
+    int? selectedCategoryId = product.categoryId;
+    try {
+      categories = await _categoryService.fetchCategories();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Không thể tải danh mục: $e')));
+      }
+    }
+
+    if (!mounted) return;
+
     final result = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Sửa sản phẩm'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameController,
-                decoration: const InputDecoration(
-                  labelText: 'Tên sản phẩm *',
-                  border: OutlineInputBorder(),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Sửa sản phẩm'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Tên sản phẩm *',
+                    border: OutlineInputBorder(),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: priceController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Giá *',
-                  border: OutlineInputBorder(),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: priceController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Giá *',
+                    border: OutlineInputBorder(),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: imageController,
-                decoration: const InputDecoration(
-                  labelText: 'URL hình ảnh',
-                  border: OutlineInputBorder(),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<int?>(
+                  value: selectedCategoryId,
+                  decoration: const InputDecoration(
+                    labelText: 'Danh mục',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: [
+                    const DropdownMenuItem<int?>(
+                      value: null,
+                      child: Text('Không có danh mục'),
+                    ),
+                    ...categories.map(
+                      (cat) => DropdownMenuItem<int?>(
+                        value: cat.id,
+                        child: Text(cat.name),
+                      ),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    setState(() {
+                      selectedCategoryId = value;
+                    });
+                  },
                 ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: descController,
-                maxLines: 3,
-                decoration: const InputDecoration(
-                  labelText: 'Mô tả',
-                  border: OutlineInputBorder(),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: imageController,
+                  decoration: const InputDecoration(
+                    labelText: 'URL hình ảnh',
+                    border: OutlineInputBorder(),
+                  ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 12),
+                TextField(
+                  controller: descController,
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                    labelText: 'Mô tả',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Hủy'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context, true);
+              },
+              child: const Text('Lưu'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Hủy'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Lưu'),
-          ),
-        ],
       ),
     );
 
@@ -202,6 +296,7 @@ class _MarketScreenState extends State<MarketScreen> {
           price: double.tryParse(priceController.text) ?? 0,
           image: imageController.text.isEmpty ? null : imageController.text,
           description: descController.text.isEmpty ? null : descController.text,
+          categoryId: selectedCategoryId,
         );
 
         await _service.updateProduct(updatedProduct);
@@ -326,6 +421,19 @@ class _MarketScreenState extends State<MarketScreen> {
                 ),
               ),
               const SizedBox(height: 8),
+              if (product.categoryName != null) ...[
+                Row(
+                  children: [
+                    const Icon(Icons.category, size: 16, color: Colors.grey),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Danh mục: ${product.categoryName}',
+                      style: const TextStyle(fontSize: 14, color: Colors.grey),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+              ],
               if (product.description != null &&
                   product.description!.isNotEmpty)
                 Text('Mô tả: ${product.description}'),
@@ -347,6 +455,83 @@ class _MarketScreenState extends State<MarketScreen> {
     return '$v ₫';
   }
 
+  Future<void> _showFilterDialog() async {
+    List<Category> categories = [];
+    try {
+      categories = await _categoryService.fetchCategories();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Không thể tải danh mục: $e')));
+      }
+      return;
+    }
+
+    if (!mounted) return;
+
+    final selected = await showDialog<int?>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Lọc theo danh mục'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: Icon(
+                  _selectedCategoryId == null
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_unchecked,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                title: const Text('Tất cả sản phẩm'),
+                onTap: () => Navigator.pop(context, -1), // -1 means "all"
+              ),
+              const Divider(),
+              ...categories.map(
+                (cat) => ListTile(
+                  leading: Icon(
+                    _selectedCategoryId == cat.id
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_unchecked,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                  title: Text(cat.name),
+                  subtitle: cat.description != null
+                      ? Text(cat.description!)
+                      : null,
+                  onTap: () => Navigator.pop(context, cat.id),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Đóng'),
+          ),
+        ],
+      ),
+    );
+
+    if (selected != null && mounted) {
+      setState(() {
+        _selectedCategoryId = selected == -1 ? null : selected;
+      });
+    }
+  }
+
+  List<Product> _filterProducts(List<Product> products) {
+    if (_selectedCategoryId == null) {
+      return products;
+    }
+    return products
+        .where((product) => product.categoryId == _selectedCategoryId)
+        .toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     final authProvider = context.watch<AuthProvider>();
@@ -356,6 +541,28 @@ class _MarketScreenState extends State<MarketScreen> {
       appBar: AppBar(
         title: const Text('Market'),
         actions: [
+          IconButton(
+            icon: Icon(
+              _selectedCategoryId == null
+                  ? Icons.filter_list_outlined
+                  : Icons.filter_list,
+            ),
+            onPressed: _showFilterDialog,
+            tooltip: 'Lọc theo danh mục',
+          ),
+          if (isAdmin)
+            IconButton(
+              icon: const Icon(Icons.category),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const CategoryManagementScreen(),
+                  ),
+                );
+              },
+              tooltip: 'Quản lý danh mục',
+            ),
           if (isAdmin)
             IconButton(
               icon: const Icon(Icons.add_circle_outline),
@@ -375,9 +582,19 @@ class _MarketScreenState extends State<MarketScreen> {
             if (snapshot.hasError) {
               return _ErrorView(error: snapshot.error, onRetry: _reload);
             }
-            final items = snapshot.data ?? const <Product>[];
+            final allProducts = snapshot.data ?? const <Product>[];
+            final items = _filterProducts(allProducts);
             if (items.isEmpty) {
-              return _EmptyView(onRetry: _reload);
+              return _selectedCategoryId != null
+                  ? _EmptyFilterView(
+                      onClear: () {
+                        setState(() {
+                          _selectedCategoryId = null;
+                        });
+                      },
+                      onRetry: _reload,
+                    )
+                  : _EmptyView(onRetry: _reload);
             }
             return Padding(
               padding: const EdgeInsets.all(12),
@@ -465,6 +682,25 @@ class _ProductCard extends StatelessWidget {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
+                  const SizedBox(height: 4),
+                  if (product.categoryName != null)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade200,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        product.categoryName!,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontSize: 10,
+                          color: Colors.grey.shade700,
+                        ),
+                      ),
+                    ),
                   const SizedBox(height: 6),
                   Text(
                     _formatPrice(product.price),
@@ -552,6 +788,50 @@ class _EmptyView extends StatelessWidget {
               onPressed: onRetry,
               icon: const Icon(Icons.refresh),
               label: const Text('Tải lại'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyFilterView extends StatelessWidget {
+  const _EmptyFilterView({required this.onClear, required this.onRetry});
+  final VoidCallback onClear;
+  final Future<void> Function() onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.filter_list_off, size: 48, color: Colors.grey),
+            const SizedBox(height: 12),
+            Text(
+              'Không có sản phẩm trong danh mục này',
+              style: Theme.of(context).textTheme.titleMedium,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: onClear,
+                  icon: const Icon(Icons.clear),
+                  label: const Text('Xóa bộ lọc'),
+                ),
+                const SizedBox(width: 12),
+                OutlinedButton.icon(
+                  onPressed: onRetry,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Tải lại'),
+                ),
+              ],
             ),
           ],
         ),
