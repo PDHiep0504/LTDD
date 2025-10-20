@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\LTDD\\btvn\\backend\\BE1.csproj": {}
+    "D:\\LTDD\\LTDD\\backend\\BE1.csproj": {}
   },
   "projects": {
-    "C:\\LTDD\\btvn\\backend\\BE1.csproj": {
+    "D:\\LTDD\\LTDD\\backend\\BE1.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\LTDD\\btvn\\backend\\BE1.csproj",
+        "projectUniqueName": "D:\\LTDD\\LTDD\\backend\\BE1.csproj",
         "projectName": "BE1",
-        "projectPath": "C:\\LTDD\\btvn\\backend\\BE1.csproj",
+        "projectPath": "D:\\LTDD\\LTDD\\backend\\BE1.csproj",
         "packagesPath": "C:\\Users\\hiep5\\.nuget\\packages\\",
-        "outputPath": "C:\\LTDD\\btvn\\backend\\obj\\",
+        "outputPath": "D:\\LTDD\\LTDD\\backend\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
