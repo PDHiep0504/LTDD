@@ -1,9 +1,11 @@
 using BE1.Models;
 using BE1.Repositories;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 [Route("api/[controller]")]
 [ApiController]
+[Authorize] // Require authentication for all endpoints
 public class ProductApiController : ControllerBase
 {
 	private readonly IProductRepository _productRepository;
@@ -48,6 +50,7 @@ public class ProductApiController : ControllerBase
 	}
 
 	[HttpPost]
+	[Authorize(Roles = "Admin,Manager")] // Only Admin and Manager can add products
 	public async Task<IActionResult> AddProduct([FromBody] Product product)
 	{
 		try
@@ -63,6 +66,7 @@ public class ProductApiController : ControllerBase
 	}
 
 	[HttpPut("{id}")]
+	[Authorize(Roles = "Admin,Manager")] // Only Admin and Manager can update products
 	public async Task<IActionResult> UpdateProduct(int id, [FromBody] Product product)
 	{
 		try
@@ -81,6 +85,7 @@ public class ProductApiController : ControllerBase
 	}
 
 	[HttpDelete("{id}")]
+	[Authorize(Roles = "Admin")] // Only Admin can delete products
 	public async Task<IActionResult> DeleteProduct(int id)
 	{
 		try

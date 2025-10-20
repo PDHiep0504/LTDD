@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:provider/provider.dart';
+
+import '../providers/auth_provider.dart';
+import 'login_screen.dart';
 
 class PersonalScreen extends StatefulWidget {
   const PersonalScreen({Key? key}) : super(key: key);
@@ -10,7 +14,7 @@ class PersonalScreen extends StatefulWidget {
 
 class _PersonalScreenState extends State<PersonalScreen> {
   final TextEditingController _phoneController = TextEditingController();
-  String _savedPhoneNumber = '0123456789'; // Số điện thoại mặc định
+  String _savedPhoneNumber = '0123456789';
 
   @override
   void initState() {
@@ -18,17 +22,50 @@ class _PersonalScreenState extends State<PersonalScreen> {
     _phoneController.text = _savedPhoneNumber;
   }
 
+  @override
+  void dispose() {
+    _phoneController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _handleLogout() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Đăng xuất'),
+        content: const Text('Bạn có chắc chắn muốn đăng xuất?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Hủy'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Đăng xuất'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      await context.read<AuthProvider>().logout();
+      if (mounted) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+          (route) => false,
+        );
+      }
+    }
+  }
+
   Future<void> _makePhoneCall(String phoneNumber) async {
     final Uri launchUri = Uri(scheme: 'tel', path: phoneNumber);
-
     try {
       if (await canLaunchUrl(launchUri)) {
         await launchUrl(launchUri);
       } else {
-        _showErrorDialog(
-          'Không thể gọi điện',
-          'Thiết bị không hỗ trợ gọi điện hoặc không có ứng dụng điện thoại.',
-        );
+        _showErrorDialog('Không thể gọi điện', 'Thiết bị không hỗ trợ gọi điện.');
       }
     } catch (e) {
       _showErrorDialog('Lỗi', 'Không thể thực hiện cuộc gọi: $e');
@@ -36,20 +73,12 @@ class _PersonalScreenState extends State<PersonalScreen> {
   }
 
   Future<void> _openYouTubeApp() async {
-    // Thử mở YouTube app trước
-    final Uri youtubeAppUri = Uri.parse('youtube://');
-    final Uri youtubeWebUri = Uri.parse('https://www.youtube.com');
-
+    final Uri youtubeUri = Uri.parse('https://www.youtube.com');
     try {
-      if (await canLaunchUrl(youtubeAppUri)) {
-        await launchUrl(youtubeAppUri, mode: LaunchMode.externalApplication);
-      } else if (await canLaunchUrl(youtubeWebUri)) {
-        await launchUrl(youtubeWebUri, mode: LaunchMode.externalApplication);
+      if (await canLaunchUrl(youtubeUri)) {
+        await launchUrl(youtubeUri, mode: LaunchMode.externalApplication);
       } else {
-        _showErrorDialog(
-          'Không thể mở YouTube',
-          'Thiết bị không có ứng dụng YouTube hoặc không thể truy cập web.',
-        );
+        _showErrorDialog('Lỗi', 'Không thể mở YouTube.');
       }
     } catch (e) {
       _showErrorDialog('Lỗi', 'Không thể mở YouTube: $e');
@@ -59,36 +88,42 @@ class _PersonalScreenState extends State<PersonalScreen> {
   void _showErrorDialog(String title, String message) {
     showDialog(
       context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text(title),
-          content: Text(message),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Đóng'),
-            ),
-          ],
-        );
-      },
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Đóng'),
+          ),
+        ],
+      ),
     );
   }
 
   void _savePhoneNumber() {
-    setState(() {
-      _savedPhoneNumber = _phoneController.text;
-    });
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Đã lưu số điện thoại')));
+    setState(() => _savedPhoneNumber = _phoneController.text);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Đã lưu số điện thoại')),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final authProvider = context.watch<AuthProvider>();
+    final user = authProvider.user;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Cá nhân'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: _handleLogout,
+            tooltip: 'Đăng xuất',
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
@@ -102,32 +137,47 @@ class _PersonalScreenState extends State<PersonalScreen> {
                 padding: const EdgeInsets.all(20.0),
                 child: Column(
                   children: [
-                    const CircleAvatar(
+                    CircleAvatar(
                       radius: 50,
-                      backgroundColor: Colors.purple,
-                      child: Icon(Icons.person, size: 60, color: Colors.white),
+                      backgroundColor: user?.isAdmin == true
+                          ? Colors.red
+                          : user?.isManager == true
+                              ? Colors.orange
+                              : Colors.purple,
+                      child: const Icon(Icons.person, size: 60, color: Colors.white),
                     ),
                     const SizedBox(height: 16),
-                    const Text(
-                      'Lê Đức Thịnh',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                      ),
+                    Text(
+                      user?.fullName ?? 'Phạm Đình Hiệp',
+                      style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Sinh viên HUTECH',
-                      style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+                      user?.email ?? 'user@example.com',
+                      style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      children: (user?.roles ?? []).map((role) {
+                        Color color = Colors.grey;
+                        if (role == 'Admin') color = Colors.red;
+                        if (role == 'Manager') color = Colors.orange;
+                        if (role == 'User') color = Colors.blue;
+                        return Chip(
+                          label: Text(role, style: const TextStyle(color: Colors.white, fontSize: 12)),
+                          backgroundColor: color,
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                        );
+                      }).toList(),
                     ),
                   ],
                 ),
               ),
             ),
-
             const SizedBox(height: 24),
 
-            // Phone Number Setting
+            // Phone Setting
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
@@ -138,13 +188,7 @@ class _PersonalScreenState extends State<PersonalScreen> {
                       children: [
                         Icon(Icons.phone, color: Colors.green),
                         SizedBox(width: 8),
-                        Text(
-                          'Cài đặt số điện thoại',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
+                        Text('Cài đặt số điện thoại', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                       ],
                     ),
                     const SizedBox(height: 12),
@@ -175,26 +219,17 @@ class _PersonalScreenState extends State<PersonalScreen> {
                 ),
               ),
             ),
-
             const SizedBox(height: 16),
 
-            // Action Buttons
+            // Actions
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Thao tác nhanh',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                    const Text('Thao tác nhanh', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 16),
-
-                    // Call Phone Button
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton.icon(
@@ -208,16 +243,13 @@ class _PersonalScreenState extends State<PersonalScreen> {
                         ),
                       ),
                     ),
-
                     const SizedBox(height: 12),
-
-                    // Open YouTube Button
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton.icon(
                         onPressed: _openYouTubeApp,
                         icon: const Icon(Icons.play_circle_fill),
-                        label: const Text('Mở ứng dụng YouTube'),
+                        label: const Text('Mở YouTube'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.red,
                           foregroundColor: Colors.white,
@@ -229,62 +261,9 @@ class _PersonalScreenState extends State<PersonalScreen> {
                 ),
               ),
             ),
-
-            const SizedBox(height: 16),
-
-            // Additional Information
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Thông tin khác',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    ListTile(
-                      leading: const Icon(Icons.email, color: Colors.orange),
-                      title: const Text('Email'),
-                      subtitle: const Text('thinh.le@student.hutech.edu.vn'),
-                      contentPadding: EdgeInsets.zero,
-                    ),
-
-                    const Divider(),
-
-                    ListTile(
-                      leading: const Icon(Icons.school, color: Colors.blue),
-                      title: const Text('Trường'),
-                      subtitle: const Text('Đại học Công nghệ TP.HCM (HUTECH)'),
-                      contentPadding: EdgeInsets.zero,
-                    ),
-
-                    const Divider(),
-
-                    ListTile(
-                      leading: const Icon(Icons.class_, color: Colors.purple),
-                      title: const Text('Lớp'),
-                      subtitle: const Text('Mobile App Development'),
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                  ],
-                ),
-              ),
-            ),
           ],
         ),
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    _phoneController.dispose();
-    super.dispose();
   }
 }

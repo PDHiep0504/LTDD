@@ -3,6 +3,7 @@ import 'settings_screen.dart';
 import 'personal_screen.dart';
 import 'translate_screen.dart';
 import 'team_info_screen.dart';
+import 'market_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -47,7 +48,10 @@ class HomeScreen extends StatelessWidget {
                           color: Colors.blue.withOpacity(0.2),
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        child: const Icon(Icons.waving_hand, color: Colors.blue),
+                        child: const Icon(
+                          Icons.waving_hand,
+                          color: Colors.blue,
+                        ),
                       ),
                       const SizedBox(width: 12),
                       const Text(
@@ -62,47 +66,40 @@ class HomeScreen extends StatelessWidget {
                   const SizedBox(height: 8),
                   const Text(
                     'Khám phá các tính năng đa dạng của ứng dụng',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey,
-                    ),
+                    style: TextStyle(fontSize: 14, color: Colors.grey),
                   ),
                 ],
               ),
             ),
-            
+
             const SizedBox(height: 24),
-            
+
             // Featured section - Translate
             const Text(
               '🌟 Tính năng nổi bật',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 12),
-            
+
             _buildFeaturedTranslateCard(
               context,
               () => Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => const TranslateScreen()),
+                MaterialPageRoute(
+                  builder: (context) => const TranslateScreen(),
+                ),
               ),
             ),
-            
+
             const SizedBox(height: 24),
-            
+
             // Other features
             const Text(
               '📱 Các tính năng khác',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 12),
-            
+
             GridView.count(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
@@ -117,22 +114,45 @@ class HomeScreen extends StatelessWidget {
                   Colors.purple,
                   () => Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (context) => const SettingsScreen()),
+                    MaterialPageRoute(
+                      builder: (context) => const SettingsScreen(),
+                    ),
                   ),
                 ),
-                _buildFeatureCard(context, 'Nhóm', Icons.group, Colors.red,
-                    () => Navigator.push(context, 
-                      MaterialPageRoute(builder: (context) => const TeamInfoScreen()),
-                    ),            
+                _buildFeatureCard(
+                  context,
+                  'Market',
+                  Icons.storefront,
+                  Colors.green,
+                  () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const MarketScreen(),
+                    ),
+                  ),
                 ),
-                 _buildFeatureCard(
+                _buildFeatureCard(
+                  context,
+                  'Nhóm',
+                  Icons.group,
+                  Colors.red,
+                  () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const TeamInfoScreen(),
+                    ),
+                  ),
+                ),
+                _buildFeatureCard(
                   context,
                   'Cá nhân',
                   Icons.person,
                   Colors.orange,
                   () => Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (context) => const PersonalScreen()),
+                    MaterialPageRoute(
+                      builder: (context) => const PersonalScreen(),
+                    ),
                   ),
                 ),
               ],
@@ -175,7 +195,11 @@ class HomeScreen extends StatelessWidget {
                       color: Colors.white.withOpacity(0.2),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Icon(Icons.translate, size: 32, color: Colors.white),
+                    child: const Icon(
+                      Icons.translate,
+                      size: 32,
+                      color: Colors.white,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -192,7 +216,10 @@ class HomeScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 4),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.green,
                             borderRadius: BorderRadius.circular(8),
@@ -211,9 +238,9 @@ class HomeScreen extends StatelessWidget {
                   ),
                 ],
               ),
-              
+
               const SizedBox(height: 16),
-              
+
               // Features
               const Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -239,9 +266,9 @@ class HomeScreen extends StatelessWidget {
                   ),
                 ],
               ),
-              
+
               const SizedBox(height: 16),
-              
+
               // Call to action
               Container(
                 width: double.infinity,
@@ -273,8 +300,13 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildFeatureCard(BuildContext context, String title, IconData icon,
-      Color color, VoidCallback onTap) {
+  Widget _buildFeatureCard(
+    BuildContext context,
+    String title,
+    IconData icon,
+    Color color,
+    VoidCallback onTap,
+  ) {
     return Card(
       elevation: 4,
       child: InkWell(
@@ -314,11 +346,8 @@ class HomeScreen extends StatelessWidget {
 class _FeatureItem extends StatelessWidget {
   final IconData icon;
   final String text;
-  
-  const _FeatureItem({
-    required this.icon,
-    required this.text,
-  });
+
+  const _FeatureItem({required this.icon, required this.text});
 
   @override
   Widget build(BuildContext context) {
@@ -329,10 +358,7 @@ class _FeatureItem extends StatelessWidget {
         Expanded(
           child: Text(
             text,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 14,
-            ),
+            style: const TextStyle(color: Colors.white, fontSize: 14),
           ),
         ),
       ],

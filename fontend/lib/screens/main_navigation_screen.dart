@@ -4,6 +4,7 @@ import 'settings_screen.dart';
 import 'personal_screen.dart';
 import 'translate_screen.dart';
 import 'team_info_screen.dart';
+import 'market_screen.dart';
 
 class MainNavigationScreen extends StatefulWidget {
   const MainNavigationScreen({Key? key}) : super(key: key);
@@ -18,6 +19,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   final List<Widget> _screens = [
     const HomeScreen(),
     const TranslateScreen(),
+    const MarketScreen(),
     const SettingsScreen(),
     const TeamInfoScreen(),
     const PersonalScreen(),
@@ -42,6 +44,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Trang chủ'),
           BottomNavigationBarItem(icon: Icon(Icons.translate), label: 'Dịch'),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.storefront),
+            label: 'Market',
+          ),
           BottomNavigationBarItem(icon: Icon(Icons.alarm), label: 'Báo thức'),
           BottomNavigationBarItem(icon: Icon(Icons.groups), label: 'Nhóm'),
           BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Cá nhân'),
