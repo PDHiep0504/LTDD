@@ -1,6 +1,7 @@
 using System.Text;
 using BE1.Models;
 using BE1.Repositories;
+using BE1.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -51,6 +52,9 @@ builder.Services.AddAuthentication(options =>
 });
 
 builder.Services.AddAuthorization();
+
+// Add Encryption Service
+builder.Services.AddSingleton<IEncryptionService, EncryptionService>();
 
 builder.Services.AddScoped<IProductRepository, ProductRepository>();
 

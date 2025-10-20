@@ -499,3 +499,5 @@ D:\LTDD\LTDD\backend\obj\Debug\net9.0\BE1.genruntimeconfig.cache
 D:\LTDD\LTDD\backend\obj\Debug\net9.0\ref\BE1.dll
 D:\LTDD\LTDD\backend\bin\Debug\net9.0\Microsoft.AspNetCore.Authentication.JwtBearer.dll
 D:\LTDD\LTDD\backend\bin\Debug\net9.0\Microsoft.AspNetCore.Identity.EntityFrameworkCore.dll
+D:\LTDD\LTDD\backend\bin\Debug\net9.0\Google.Authenticator.dll
+D:\LTDD\LTDD\backend\bin\Debug\net9.0\QRCoder.dll

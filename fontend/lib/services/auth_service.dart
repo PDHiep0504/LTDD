@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config/app_config.dart';
 import '../models/auth_models.dart';
+import '../models/totp_models.dart';
 
 class AuthService {
   AuthService({http.Client? client}) : _client = client ?? http.Client();
@@ -217,6 +218,178 @@ class AuthService {
     final token = await getToken();
     if (token == null) return false;
     return !await isTokenExpired();
+  }
+
+  // ==================== TOTP Methods ====================
+
+  // Enable TOTP - Get QR code and setup info
+  Future<TotpSetupResponse> enableTotp() async {
+    final uri = _buildUri('/api/Auth/totp/enable');
+    final token = await getToken();
+
+    if (token == null) {
+      throw const AuthException('Not authenticated');
+    }
+
+    try {
+      final res = await _client
+          .post(
+            uri,
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+          )
+          .timeout(const Duration(seconds: 15));
+
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        final body = json.decode(utf8.decode(res.bodyBytes));
+        return TotpSetupResponse.fromJson(body);
+      }
+
+      final body = json.decode(utf8.decode(res.bodyBytes));
+      throw AuthException(body['message'] ?? 'Failed to enable TOTP');
+    } catch (e) {
+      if (kDebugMode) print('Enable TOTP error: $e');
+      rethrow;
+    }
+  }
+
+  // Verify TOTP code to complete setup
+  Future<TotpVerifyResponse> verifyTotp(String code) async {
+    final uri = _buildUri('/api/Auth/totp/verify');
+    final token = await getToken();
+
+    if (token == null) {
+      throw const AuthException('Not authenticated');
+    }
+
+    try {
+      final request = TotpVerifyRequest(code: code);
+      final res = await _client
+          .post(
+            uri,
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+            body: json.encode(request.toJson()),
+          )
+          .timeout(const Duration(seconds: 15));
+
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        final body = json.decode(utf8.decode(res.bodyBytes));
+        return TotpVerifyResponse.fromJson(body);
+      }
+
+      final body = json.decode(utf8.decode(res.bodyBytes));
+      throw AuthException(body['message'] ?? 'Failed to verify TOTP');
+    } catch (e) {
+      if (kDebugMode) print('Verify TOTP error: $e');
+      rethrow;
+    }
+  }
+
+  // Disable TOTP
+  Future<void> disableTotp(String password) async {
+    final uri = _buildUri('/api/Auth/totp/disable');
+    final token = await getToken();
+
+    if (token == null) {
+      throw const AuthException('Not authenticated');
+    }
+
+    try {
+      final request = TotpDisableRequest(password: password);
+      final res = await _client
+          .post(
+            uri,
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+            body: json.encode(request.toJson()),
+          )
+          .timeout(const Duration(seconds: 15));
+
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        return;
+      }
+
+      final body = json.decode(utf8.decode(res.bodyBytes));
+      throw AuthException(body['message'] ?? 'Failed to disable TOTP');
+    } catch (e) {
+      if (kDebugMode) print('Disable TOTP error: $e');
+      rethrow;
+    }
+  }
+
+  // Login with TOTP support
+  Future<AuthResponse> loginWithTotp(LoginWithTotpRequest request) async {
+    final uri = _buildUri('/api/Auth/login-with-totp');
+    try {
+      final res = await _client
+          .post(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: json.encode(request.toJson()),
+          )
+          .timeout(const Duration(seconds: 15));
+
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        final body = json.decode(utf8.decode(res.bodyBytes));
+
+        // Debug: Print response
+        if (kDebugMode) {
+          print('=== Login with TOTP Response ===');
+          print(json.encode(body));
+          print('================================');
+        }
+
+        // Some responses may only include requiresTwoFactor without full token/user
+        // Normalize the payload to avoid parsing errors
+        if (body is Map<String, dynamic> && body['requiresTwoFactor'] == true) {
+          // Backend sends empty token but full user info for 2FA
+          // Ensure user data exists
+          final userMap = body['user'] as Map<String, dynamic>?;
+          if (userMap != null) {
+            // Use actual user data from backend
+            final normalized = {
+              'token': body['token'] ?? '',
+              'refreshToken': body['refreshToken'] ?? '',
+              'user': userMap,
+              'expiration':
+                  body['expiration'] ?? DateTime.now().toIso8601String(),
+              'requiresTwoFactor': true,
+              'tempToken': body['tempToken'],
+            };
+            final response = AuthResponse.fromJson(normalized);
+            // Do not persist tokens when 2FA is still required
+            if (kDebugMode) print('2FA required, not saving tokens');
+            return response;
+          }
+        }
+
+        final response = AuthResponse.fromJson(body);
+
+        // Only save if not requiring 2FA
+        if (!response.requiresTwoFactor) {
+          await _saveAuthData(response);
+          if (kDebugMode) print('Login successful, tokens saved');
+        }
+
+        return response;
+      }
+
+      final body = json.decode(utf8.decode(res.bodyBytes));
+      throw AuthException(body['message'] ?? 'Login failed');
+    } catch (e) {
+      if (kDebugMode) {
+        print('Login with TOTP error: $e');
+        print('Stack trace: ${StackTrace.current}');
+      }
+      rethrow;
+    }
   }
 }
 
