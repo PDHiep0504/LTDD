@@ -359,6 +359,12 @@ class _SettingsScreenState extends State<SettingsScreen>
                         textAlign: TextAlign.center,
                         style: const TextStyle(fontSize: 14),
                       ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '⏱️ Thời gian nghe: 10 giây',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                      ),
                       if (_hasFinalResult) ...[
                         const SizedBox(height: 10),
                         Text(
@@ -421,7 +427,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   void _hideListeningOverlay() {
-    if (_listeningDialogContext != null) {
+    if (_listeningDialogContext != null && mounted) {
       Navigator.of(_listeningDialogContext!).pop();
       _listeningDialogContext = null;
       _overlaySetState = null;
@@ -437,24 +443,33 @@ class _SettingsScreenState extends State<SettingsScreen>
       var status = await Permission.microphone.status;
       debugPrint('Current permission status: $status');
 
+      // Nếu chưa có quyền, hiển thị dialog giải thích trước
       if (status.isDenied) {
-        debugPrint('Permission denied, requesting...');
+        final shouldRequest = await _showPermissionRequestDialog();
+        if (shouldRequest != true) {
+          debugPrint('User cancelled permission request');
+          return;
+        }
+
+        debugPrint('Requesting microphone permission...');
         status = await Permission.microphone.request();
         debugPrint('Permission after request: $status');
       }
 
+      // Nếu bị từ chối vĩnh viễn, hướng dẫn vào Settings
       if (status.isPermanentlyDenied) {
-        _showErrorDialog(
-          'Quyền ghi âm bị từ chối',
-          'Bạn đã từ chối vĩnh viễn quyền ghi âm. Vui lòng vào Cài đặt > Ứng dụng > ${context.mounted ? 'App này' : 'Ứng dụng'} > Quyền để bật quyền Microphone.',
-        );
+        final shouldOpenSettings = await _showPermissionDeniedDialog();
+        if (shouldOpenSettings == true) {
+          await openAppSettings();
+        }
         return;
       }
 
+      // Nếu vẫn không có quyền sau khi request
       if (!status.isGranted) {
         _showErrorDialog(
           'Không có quyền ghi âm',
-          'Cần cấp quyền ghi âm để sử dụng tính năng này.',
+          'Cần cấp quyền ghi âm để sử dụng tính năng giọng nói.',
         );
         return;
       }
@@ -471,15 +486,36 @@ class _SettingsScreenState extends State<SettingsScreen>
           } else if (s.contains('notListening') || s.contains('done')) {
             _isListening = false;
           }
-          setState(() {}); // cập nhật icon app bar
+          if (mounted) {
+            setState(() {}); // cập nhật icon app bar
+          }
           _overlaySetState?.call(() {}); // cập nhật overlay nếu đang mở
         },
         onError: (e) {
           debugPrint('Speech error: $e');
+
+          // Xử lý timeout thân thiện hơn
+          if (e.errorMsg.contains('error_speech_timeout') ||
+              e.errorMsg.contains('timeout')) {
+            _stopListening();
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    '⏱️ Hết thời gian nghe. Vui lòng thử lại và nói rõ hơn.',
+                  ),
+                  duration: Duration(seconds: 3),
+                ),
+              );
+            }
+            return;
+          }
+
+          // Các lỗi khác
           _stopListening();
           _showErrorDialog(
             'Lỗi ghi âm',
-            'Có lỗi xảy ra khi ghi âm: ${e.errorMsg}\n\nVui lòng thử lại hoặc khởi động lại ứng dụng.',
+            'Có lỗi xảy ra: ${e.errorMsg}\n\nVui lòng thử lại hoặc khởi động lại ứng dụng.',
           );
         },
       );
@@ -509,16 +545,39 @@ class _SettingsScreenState extends State<SettingsScreen>
     _hasFinalResult = false;
     _pendingParsedAlarm = null;
     _soundLevel = 0;
-    setState(() {});
+    if (mounted) {
+      setState(() {});
+    }
     _showListeningOverlay();
 
+    // Lấy danh sách locale khả dụng
+    final locales = await _speech.locales();
+    String? selectedLocale;
+
+    // Ưu tiên tiếng Việt, nếu không có thì dùng locale đầu tiên
+    if (locales.isNotEmpty) {
+      // Tìm locale tiếng Việt
+      final viLocale = locales.firstWhere(
+        (l) => l.localeId.toLowerCase().startsWith('vi'),
+        orElse: () => locales.first,
+      );
+      selectedLocale = viLocale.localeId;
+      debugPrint(
+        'Using locale: $selectedLocale (available: ${locales.length} locales)',
+      );
+    } else {
+      debugPrint('No locales available, using default');
+    }
+
     _speech.listen(
-      localeId: 'vi_VN',
-      listenFor: const Duration(seconds: 6),
-      pauseFor: const Duration(seconds: 1),
+      localeId: selectedLocale, // Dùng locale khả dụng thay vì cố định
+      listenFor: const Duration(seconds: 10), // Tăng từ 6s lên 10s
+      pauseFor: const Duration(seconds: 2), // Tăng từ 1s lên 2s
       onResult: (result) {
         _voiceText = result.recognizedWords;
-        setState(() {});
+        if (mounted) {
+          setState(() {});
+        }
         _overlaySetState?.call(() {});
         if (result.finalResult) {
           // Dừng ghi âm trước, giữ overlay để người dùng bấm Lưu
@@ -528,7 +587,9 @@ class _SettingsScreenState extends State<SettingsScreen>
           _voiceTextFinal = result.recognizedWords;
           _hasFinalResult = true;
           _pendingParsedAlarm = _parseAlarmFromText(_voiceTextFinal);
-          setState(() {});
+          if (mounted) {
+            setState(() {});
+          }
           _overlaySetState?.call(() {});
         }
       },
@@ -547,7 +608,9 @@ class _SettingsScreenState extends State<SettingsScreen>
       _speech.cancel();
     } catch (_) {}
     _isListening = false;
-    setState(() {});
+    if (mounted) {
+      setState(() {});
+    }
     _hideListeningOverlay();
   }
 
@@ -555,16 +618,21 @@ class _SettingsScreenState extends State<SettingsScreen>
     final al = _pendingParsedAlarm;
     if (al == null) return;
     _alarms.add(al);
-    setState(() {});
+    if (mounted) {
+      setState(() {});
+    }
     _hideListeningOverlay();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('✅ Đã đặt báo thức lúc ${al.time.format(context)}'),
-      ),
-    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('✅ Đã đặt báo thức lúc ${al.time.format(context)}'),
+        ),
+      );
+    }
   }
 
   void _showErrorDialog(String title, String content) {
+    if (!mounted) return;
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
@@ -574,6 +642,75 @@ class _SettingsScreenState extends State<SettingsScreen>
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Đóng'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<bool?> _showPermissionRequestDialog() async {
+    if (!mounted) return false;
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.mic, color: Colors.blue),
+            SizedBox(width: 12),
+            Text('Cần quyền ghi âm'),
+          ],
+        ),
+        content: const Text(
+          'Ứng dụng cần quyền truy cập microphone để:\n\n'
+          '• Nhận diện giọng nói\n'
+          '• Đặt báo thức bằng giọng nói\n'
+          '• Điều khiển ứng dụng bằng giọng nói\n\n'
+          'Bạn có muốn cấp quyền không?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Không'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Cho phép'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<bool?> _showPermissionDeniedDialog() async {
+    if (!mounted) return false;
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.warning, color: Colors.orange),
+            SizedBox(width: 12),
+            Text('Quyền bị từ chối'),
+          ],
+        ),
+        content: const Text(
+          'Bạn đã từ chối quyền ghi âm.\n\n'
+          'Để sử dụng tính năng giọng nói, vui lòng:\n\n'
+          '1. Mở Cài đặt ứng dụng\n'
+          '2. Chọn "Quyền" hoặc "Permissions"\n'
+          '3. Bật quyền "Microphone"\n\n'
+          'Bạn có muốn mở Cài đặt không?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Để sau'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Mở Cài đặt'),
           ),
         ],
       ),
@@ -623,63 +760,176 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   // Trả về AlarmModel nếu parse được, ngược lại null
-  AlarmModel? _parseAlarmFromText(String text) {
-    final s = text.toLowerCase().trim();
+  AlarmModel? _parseAlarmFromText(String raw) {
+    if (raw.trim().isEmpty) return null;
 
-    final List<RegExp> patterns = [
-      // "7 giờ 30 (phút) sáng/chiều/tối", "7h 30p tối"
-      RegExp(
-        r'(\d{1,2})\s*(?:giờ|h)\s*(\d{1,2})\s*(?:phút|p)?\s*(sáng|chiều|tối)?',
-      ),
-      // "7:30 sáng/chiều/tối"
-      RegExp(r'(\d{1,2}):(\d{2})\s*(sáng|chiều|tối)?'),
-      // "7 giờ sáng/chiều/tối"
-      RegExp(r'(\d{1,2})\s*(?:giờ|h)\s*(sáng|chiều|tối)?'),
-      // "7 sáng/chiều/tối" hoặc chỉ số "19"
-      RegExp(r'(?:báo thức|đặt|lúc)?\s*(\d{1,2})\s*(sáng|chiều|tối)?'),
-    ];
+    // -------- 1) Chuẩn hoá chuỗi --------
+    String s = raw.toLowerCase();
 
-    int? hour;
-    int minute = 0;
-    bool isPM = false;
+    // Bỏ dấu ngoặc, zero-width, NBSP
+    s = s
+        .replaceAll(
+          RegExp(
+            r'["""'
+            '`´\(\)\[\]]',
+          ),
+          '',
+        )
+        .replaceAll(RegExp(r'[\u00A0\u200B\u200C\u200D\uFEFF]'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
 
-    RegExpMatch? match;
-    for (final p in patterns) {
-      match = p.firstMatch(s);
-      if (match != null) break;
-    }
-    if (match == null) return null;
+    // Bỏ từ đệm phổ biến
+    s = s
+        .replaceAll(
+          RegExp(r'\b(báo thức|đặt|nhắc|nhắc nhở|cho|tôi|mình|vào|lúc|hãy)\b'),
+          ' ',
+        )
+        .trim();
 
-    // giờ
-    hour = int.tryParse(match.group(1) ?? '');
+    // Chuẩn hoá "giờ" variations
+    s = s.replaceAll(RegExp(r'\bgio\b'), 'giờ');
 
-    // phút (nếu có, và không phải chữ)
-    final g2 = match.group(2);
-    if (g2 != null && !RegExp(r'^(sáng|chiều|tối)$').hasMatch(g2)) {
-      minute = int.tryParse(g2) ?? 0;
-    }
-
-    // buổi: thử tìm ở các group 2..4 tuỳ pattern
-    final possiblePeriods = <String?>[
-      match.group(3),
-      match.group(2),
-      match.group(4),
-    ];
-    final period = possiblePeriods.firstWhere(
-      (e) => e != null && RegExp(r'(sáng|chiều|tối)').hasMatch(e),
-      orElse: () => null,
+    // Chuẩn hoá dấu phân cách số -> ":" (8 30, 8.30, 8-30 → 8:30)
+    s = s.replaceAllMapped(
+      RegExp(r'(\d{1,2})\s*[\.\-]\s*(\d{1,2})'),
+      (m) => '${m[1]}:${m[2]}',
     );
-    if (period != null) {
-      isPM = period.contains('tối') || period.contains('chiều');
-    }
 
+    // "rưỡi" → :30  (8 giờ rưỡi, 8h rưỡi, 8 rưỡi)
+    s = s.replaceAllMapped(
+      RegExp(r'(\d{1,2})\s*(?:giờ|h)?\s*r(?:u?ỡ|ươ)i'),
+      (m) => '${m[1]}:30',
+    );
+
+    // "kém X phút" → giờ trước + (60-X) phút
+    s = s.replaceAllMapped(
+      RegExp(r'(\d{1,2})\s*(?:giờ|h)?\s*kém\s*(\d{1,2})(?:\s*phút)?'),
+      (m) {
+        int base = int.parse(m[1]!);
+        int minus = int.parse(m[2]!);
+        int h = (base - 1 + 24) % 24;
+        int mm = (60 - minus) % 60;
+        return '$h:${mm.toString().padLeft(2, '0')}';
+      },
+    );
+
+    // -------- 2) Regex các mẫu phổ biến --------
+    final periodRe = r'(sáng|trưa|chiều|tối|đêm|khuya)';
+    final List<RegExp> patterns = [
+      // Pattern 0: 8:30 [buổi] | 20:15 | 00:05 đêm
+      RegExp(r'\b(\d{1,2}):(\d{1,2})\s*' + periodRe + r'?(?:\s|$)'),
+
+      // Pattern 1: 8h30 [buổi] | 8 giờ 5 phút | 8h 5p | 8 giờ 5
+      RegExp(
+        r'\b(\d{1,2})\s*(?:giờ|h)\s*(\d{1,2})?\s*(?:phút|p)?\s*' +
+            periodRe +
+            r'?(?:\s|$)',
+      ),
+
+      // Pattern 2: 8 [buổi] | 20 giờ | 8 tối (có buổi)
+      RegExp(r'\b(\d{1,2})\s*(?:giờ|h)?\s*' + periodRe + r'(?:\s|$)'),
+
+      // Pattern 3: chỉ số giờ không có buổi (22 giờ, 15 giờ)
+      RegExp(r'\b(\d{1,2})\s*(?:giờ|h)(?:\s|$)'),
+    ];
+
+    RegExpMatch? m;
+    int usedPattern = -1;
+    for (int i = 0; i < patterns.length; i++) {
+      final t = patterns[i].firstMatch(s);
+      if (t != null) {
+        m = t;
+        usedPattern = i;
+        break;
+      }
+    }
+    if (m == null) return null;
+
+    int? hour = int.tryParse(m.group(1) ?? '');
     if (hour == null) return null;
 
-    // 12h → 24h
-    if (isPM && hour >= 1 && hour <= 11) hour += 12; // 1..11 PM
-    if (!isPM && hour == 12) hour = 0; // 12 sáng = 0h
+    int minute = 0;
+    String? period;
 
-    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+    // Parse phút và buổi theo từng pattern
+    if (usedPattern == 0) {
+      // H:M [buổi]
+      minute = int.tryParse(m.group(2) ?? '0') ?? 0;
+      period = m.group(3);
+    } else if (usedPattern == 1) {
+      // H giờ [M] [buổi]
+      String? g2 = m.group(2);
+      String? g3 = m.group(3);
+
+      if (g2 != null && RegExp(r'^\d+$').hasMatch(g2)) {
+        minute = int.tryParse(g2) ?? 0;
+        period = g3;
+      } else {
+        period = g2;
+      }
+    } else if (usedPattern == 2) {
+      // H [buổi]
+      period = m.group(2);
+    }
+
+    // Validate phút
+    if (minute < 0 || minute > 59) return null;
+
+    // -------- 3) Xử lý AM/PM dựa trên buổi --------
+    final per = (period ?? '').trim();
+
+    // Nếu giờ đã ở dạng 24h (>= 13) và không có buổi -> giữ nguyên
+    if (hour >= 13 && hour <= 23 && per.isEmpty) {
+      // Đã là 24h format (22 giờ, 15 giờ...), giữ nguyên
+    }
+    // Nếu "sáng" mà giờ >= 13 -> có thể là nhầm, trừ 12
+    else if (per.contains('sáng') && hour >= 13 && hour <= 23) {
+      hour -= 12;
+    }
+    // Xử lý các buổi có chỉ định
+    else if (per.isNotEmpty) {
+      // Xử lý đặc biệt cho 12h
+      if (hour == 12) {
+        if (per.contains('đêm') || per.contains('khuya')) {
+          // "12 đêm/khuya" = 0h (nửa đêm)
+          hour = 0;
+        } else if (per.contains('sáng')) {
+          // "12 sáng" = 0h (nửa đêm)
+          hour = 0;
+        } else if (per.contains('trưa') || per.contains('chiều')) {
+          // "12 trưa/chiều" = 12h (giữa trưa)
+          hour = 12;
+        } else if (per.contains('tối')) {
+          // "12 tối" = 0h (nửa đêm)
+          hour = 0;
+        }
+      }
+      // Xử lý cho "trưa" (12h-14h, nhưng 1-11 trưa cũng hợp lệ)
+      else if (per.contains('trưa')) {
+        if (hour >= 1 && hour <= 11) {
+          hour += 12; // 1-11 trưa -> 13-23h
+        }
+        // 12-14 trưa giữ nguyên nếu đã >= 12
+      }
+      // Xử lý PM cho chiều/tối/đêm/khuya
+      else if (per.contains('chiều') ||
+          per.contains('tối') ||
+          per.contains('đêm') ||
+          per.contains('khuya')) {
+        if (hour >= 1 && hour <= 11) {
+          hour += 12;
+        }
+      }
+      // Xử lý "sáng"
+      else if (per.contains('sáng')) {
+        // 1-11 sáng giữ nguyên (AM)
+        // 12 sáng đã xử lý ở trên
+      }
+    }
+
+    // Validate giờ cuối cùng
+    if (hour < 0 || hour > 23) return null;
 
     return AlarmModel(
       time: TimeOfDay(hour: hour, minute: minute),
@@ -687,71 +937,6 @@ class _SettingsScreenState extends State<SettingsScreen>
       isActive: true,
       repeatDaily: true,
     );
-  }
-
-  /// Play YouTube audio by extracting direct stream URL with loading indicator and timeout
-  Future<void> playYouTubeAudio(String youtubeUrl) async {
-    final yt = YoutubeExplode();
-    bool isCancelled = false;
-    BuildContext? dialogContext;
-    try {
-      showDialog(
-        context: context,
-        barrierDismissible: true,
-        builder: (ctx) {
-          dialogContext = ctx;
-          return AlertDialog(
-            content: Row(
-              children: const [
-                CircularProgressIndicator(),
-                SizedBox(width: 16),
-                Expanded(child: Text('Đang lấy link audio từ YouTube...')),
-              ],
-            ),
-          );
-        },
-      );
-
-      final stopwatch = Stopwatch()..start();
-      final video = await yt.videos
-          .get(youtubeUrl)
-          .timeout(
-            const Duration(seconds: 10),
-            onTimeout: () =>
-                throw Exception('Quá thời gian chờ lấy thông tin video'),
-          );
-      if (isCancelled) throw Exception('Đã hủy');
-      debugPrint('Video info fetched in: ${stopwatch.elapsedMilliseconds} ms');
-
-      final manifest = await yt.videos.streamsClient
-          .getManifest(video.id)
-          .timeout(
-            const Duration(seconds: 10),
-            onTimeout: () => throw Exception('Quá thời gian chờ lấy manifest'),
-          );
-      if (isCancelled) throw Exception('Đã hủy');
-      debugPrint('Manifest fetched in: ${stopwatch.elapsedMilliseconds} ms');
-
-      final audioStreamInfo = manifest.audioOnly.withHighestBitrate();
-      final audioUrl = audioStreamInfo.url.toString();
-
-      if (dialogContext != null) Navigator.of(dialogContext!).pop();
-
-      await _audioPlayer.setUrl(audioUrl);
-      await _audioPlayer.play();
-      debugPrint('Playback started in: ${stopwatch.elapsedMilliseconds} ms');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Đang phát audio từ YouTube: ${video.title}')),
-      );
-    } catch (e) {
-      if (dialogContext != null) Navigator.of(dialogContext!).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Không thể phát audio từ YouTube: $e')),
-      );
-      debugPrint('YouTube audio error: $e');
-    } finally {
-      yt.close();
-    }
   }
 
   @override
@@ -915,44 +1100,36 @@ class _SettingsScreenState extends State<SettingsScreen>
           // Test sound
           Padding(
             padding: const EdgeInsets.all(16),
-            child: Row(
+            child: Column(
               children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () async {
-                      await _playAlarmSound();
-                      if (!mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Đang phát âm báo…')),
-                      );
-                    },
-                    icon: const Icon(Icons.volume_up),
-                    label: const Text('Thử âm báo'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.orange,
-                      foregroundColor: Colors.white,
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () async {
+                          await _playAlarmSound();
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Đang phát âm báo…')),
+                          );
+                        },
+                        icon: const Icon(Icons.volume_up),
+                        label: const Text('Thử âm báo'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.orange,
+                          foregroundColor: Colors.white,
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                OutlinedButton.icon(
-                  onPressed: _stopAlarmSound,
-                  icon: const Icon(Icons.stop),
-                  label: const Text('Dừng'),
-                ),
-                const SizedBox(width: 12),
-                ElevatedButton.icon(
-                  onPressed: () async {
-                    await playYouTubeAudio(
-                      'https://www.youtube.com/watch?v=2Vv-BfVoq4g',
-                    );
-                  },
-                  icon: const Icon(Icons.music_note),
-                  label: const Text('Thử YouTube'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue,
-                    foregroundColor: Colors.white,
-                  ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _stopAlarmSound,
+                        icon: const Icon(Icons.stop),
+                        label: const Text('Dừng'),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),

@@ -216,16 +216,20 @@ class _TeamInfoScreenState extends State<TeamInfoScreen> {
                             ],
                           ),
                           trailing: PopupMenuButton<String>(
-                            onSelected: (value) {
+                            onSelected: (value) async {
                               switch (value) {
                                 case 'view':
-                                  Navigator.push(
+                                  final result = await Navigator.push<bool>(
                                     context,
                                     MaterialPageRoute(
                                       builder: (context) =>
                                           DetailMemberScreen(member: member),
                                     ),
                                   );
+                                  // Reload nếu có thay đổi
+                                  if (result == true) {
+                                    _loadMembers();
+                                  }
                                   break;
                                 case 'delete':
                                   _deleteMember(member);

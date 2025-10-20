@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'HomeScreen.dart';
-import 'infomation_screen.dart';
 import 'settings_screen.dart';
 import 'personal_screen.dart';
 import 'translate_screen.dart';
@@ -18,7 +17,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
   final List<Widget> _screens = [
     const HomeScreen(),
-    const InformationScreen(),
     const TranslateScreen(),
     const SettingsScreen(),
     const TeamInfoScreen(),
@@ -43,10 +41,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         unselectedFontSize: 10,
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Trang chủ'),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.play_circle),
-            label: 'YouTube',
-          ),
           BottomNavigationBarItem(icon: Icon(Icons.translate), label: 'Dịch'),
           BottomNavigationBarItem(icon: Icon(Icons.alarm), label: 'Báo thức'),
           BottomNavigationBarItem(icon: Icon(Icons.groups), label: 'Nhóm'),

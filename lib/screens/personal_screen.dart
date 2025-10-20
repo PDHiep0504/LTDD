@@ -109,7 +109,7 @@ class _PersonalScreenState extends State<PersonalScreen> {
                     ),
                     const SizedBox(height: 16),
                     const Text(
-                      'Nguyễn Vũ Quang Phúc',
+                      'Lê Đức Thịnh',
                       style: TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.bold,
@@ -251,7 +251,7 @@ class _PersonalScreenState extends State<PersonalScreen> {
                     ListTile(
                       leading: const Icon(Icons.email, color: Colors.orange),
                       title: const Text('Email'),
-                      subtitle: const Text('phuc.nguyen@student.hutech.edu.vn'),
+                      subtitle: const Text('thinh.le@student.hutech.edu.vn'),
                       contentPadding: EdgeInsets.zero,
                     ),
 

@@ -2,11 +2,49 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/member.dart';
+import 'edit_member_screen.dart';
 
-class DetailMemberScreen extends StatelessWidget {
+class DetailMemberScreen extends StatefulWidget {
   final Member member;
 
   const DetailMemberScreen({Key? key, required this.member}) : super(key: key);
+
+  @override
+  State<DetailMemberScreen> createState() => _DetailMemberScreenState();
+}
+
+class _DetailMemberScreenState extends State<DetailMemberScreen> {
+  late Member _currentMember;
+  bool _hasChanges = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentMember = widget.member;
+  }
+
+  Future<void> _navigateToEdit() async {
+    final result = await Navigator.push<Member?>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => EditMemberScreen(member: _currentMember),
+      ),
+    );
+
+    // Nếu update thành công, cập nhật member hiện tại
+    if (result != null && mounted) {
+      setState(() {
+        _currentMember = result;
+        _hasChanges = true; // Đánh dấu có thay đổi
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    // Khi đóng màn hình, trả về true nếu có thay đổi
+    super.dispose();
+  }
 
   Future<void> _makePhoneCall(String phoneNumber) async {
     final Uri launchUri = Uri(scheme: 'tel', path: phoneNumber);
@@ -36,8 +74,16 @@ class DetailMemberScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(member.fullName),
+        title: Text(_currentMember.fullName),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        actions: [
+          // Nút Edit
+          IconButton(
+            icon: const Icon(Icons.edit),
+            tooltip: 'Chỉnh sửa',
+            onPressed: _navigateToEdit,
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         child: Column(
@@ -59,30 +105,109 @@ class DetailMemberScreen extends StatelessWidget {
               ),
               child: Column(
                 children: [
-                  // Avatar
-                  CircleAvatar(
-                    radius: 60,
-                    backgroundImage: member.avatarUrl != null
-                        ? CachedNetworkImageProvider(member.avatarUrl!)
-                        : null,
-                    child: member.avatarUrl == null
-                        ? Text(
-                            member.fullName.isNotEmpty
-                                ? member.fullName[0].toUpperCase()
-                                : '?',
-                            style: const TextStyle(
-                              fontSize: 36,
-                              fontWeight: FontWeight.bold,
+                  // Avatar with border and shadow
+                  Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.2),
+                          blurRadius: 10,
+                          offset: const Offset(0, 5),
+                        ),
+                      ],
+                    ),
+                    child: CircleAvatar(
+                      radius: 60,
+                      backgroundColor: Colors.grey[300],
+                      child: _currentMember.avatarUrl != null
+                          ? ClipOval(
+                              child: CachedNetworkImage(
+                                imageUrl: _currentMember.avatarUrl!,
+                                width: 120,
+                                height: 120,
+                                fit: BoxFit.cover,
+                                placeholder: (context, url) => Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    const CircularProgressIndicator(),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'Loading...',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        color: Colors.grey[600],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                errorWidget: (context, url, error) {
+                                  // Log error for debugging
+                                  debugPrint('❌ Avatar load error: $error');
+                                  debugPrint('   URL: $url');
+                                  debugPrint(
+                                    '   Path: ${_currentMember.avatarPath}',
+                                  );
+
+                                  return Container(
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: Colors.red[100],
+                                    ),
+                                    child: Column(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.error_outline,
+                                          color: Colors.red[700],
+                                          size: 32,
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          'Load failed',
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            color: Colors.red[700],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                            )
+                          : Container(
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                gradient: LinearGradient(
+                                  colors: [
+                                    Colors.blue[300]!,
+                                    Colors.purple[300]!,
+                                  ],
+                                ),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  _currentMember.fullName.isNotEmpty
+                                      ? _currentMember.fullName[0].toUpperCase()
+                                      : '?',
+                                  style: const TextStyle(
+                                    fontSize: 36,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
                             ),
-                          )
-                        : null,
+                    ),
                   ),
 
                   const SizedBox(height: 16),
 
                   // Tên
                   Text(
-                    member.fullName,
+                    _currentMember.fullName,
                     style: const TextStyle(
                       fontSize: 28,
                       fontWeight: FontWeight.bold,
@@ -106,7 +231,7 @@ class DetailMemberScreen extends StatelessWidget {
                       ),
                     ),
                     child: Text(
-                      member.role.displayName,
+                      _currentMember.role.displayName,
                       style: TextStyle(
                         color: Theme.of(context).primaryColor,
                         fontWeight: FontWeight.w600,
@@ -135,17 +260,17 @@ class DetailMemberScreen extends StatelessWidget {
                     child: ListTile(
                       leading: const Icon(Icons.email, color: Colors.orange),
                       title: const Text('Email'),
-                      subtitle: member.email != null
-                          ? Text(member.email!)
+                      subtitle: _currentMember.email != null
+                          ? Text(_currentMember.email!)
                           : null,
                       trailing: IconButton(
                         icon: const Icon(Icons.send),
-                        onPressed: member.email != null
-                            ? () => _sendEmail(member.email!)
+                        onPressed: _currentMember.email != null
+                            ? () => _sendEmail(_currentMember.email!)
                             : null,
                       ),
-                      onTap: member.email != null
-                          ? () => _sendEmail(member.email!)
+                      onTap: _currentMember.email != null
+                          ? () => _sendEmail(_currentMember.email!)
                           : null,
                     ),
                   ),
@@ -157,17 +282,17 @@ class DetailMemberScreen extends StatelessWidget {
                     child: ListTile(
                       leading: const Icon(Icons.phone, color: Colors.green),
                       title: const Text('Số điện thoại'),
-                      subtitle: member.phone != null
-                          ? Text(member.phone!)
+                      subtitle: _currentMember.phone != null
+                          ? Text(_currentMember.phone!)
                           : null,
                       trailing: IconButton(
                         icon: const Icon(Icons.call),
-                        onPressed: member.phone != null
-                            ? () => _makePhoneCall(member.phone!)
+                        onPressed: _currentMember.phone != null
+                            ? () => _makePhoneCall(_currentMember.phone!)
                             : null,
                       ),
-                      onTap: member.phone != null
-                          ? () => _makePhoneCall(member.phone!)
+                      onTap: _currentMember.phone != null
+                          ? () => _makePhoneCall(_currentMember.phone!)
                           : null,
                     ),
                   ),
@@ -175,7 +300,8 @@ class DetailMemberScreen extends StatelessWidget {
                   const SizedBox(height: 24),
 
                   // Mô tả
-                  if (member.bio != null && member.bio!.isNotEmpty) ...[
+                  if (_currentMember.bio != null &&
+                      _currentMember.bio!.isNotEmpty) ...[
                     const Text(
                       'Mô tả',
                       style: TextStyle(
@@ -190,7 +316,7 @@ class DetailMemberScreen extends StatelessWidget {
                       child: Padding(
                         padding: const EdgeInsets.all(16),
                         child: Text(
-                          member.bio!,
+                          _currentMember.bio!,
                           style: const TextStyle(fontSize: 16, height: 1.5),
                         ),
                       ),
@@ -215,23 +341,12 @@ class DetailMemberScreen extends StatelessWidget {
                       ),
                       title: const Text('Ngày tham gia'),
                       subtitle: Text(
-                        '${member.createdAt.day}/${member.createdAt.month}/${member.createdAt.year}',
+                        '${_currentMember.createdAt.day}/${_currentMember.createdAt.month}/${_currentMember.createdAt.year}',
                       ),
                     ),
                   ),
 
                   const SizedBox(height: 8),
-
-                  Card(
-                    child: ListTile(
-                      leading: const Icon(
-                        Icons.fingerprint,
-                        color: Colors.purple,
-                      ),
-                      title: const Text('ID'),
-                      subtitle: Text(member.id),
-                    ),
-                  ),
                 ],
               ),
             ),
@@ -246,8 +361,8 @@ class DetailMemberScreen extends StatelessWidget {
           children: [
             Expanded(
               child: ElevatedButton.icon(
-                onPressed: member.phone != null
-                    ? () => _makePhoneCall(member.phone!)
+                onPressed: _currentMember.phone != null
+                    ? () => _makePhoneCall(_currentMember.phone!)
                     : null,
                 icon: const Icon(Icons.call),
                 label: const Text('Gọi điện'),
@@ -263,8 +378,8 @@ class DetailMemberScreen extends StatelessWidget {
 
             Expanded(
               child: ElevatedButton.icon(
-                onPressed: member.email != null
-                    ? () => _sendEmail(member.email!)
+                onPressed: _currentMember.email != null
+                    ? () => _sendEmail(_currentMember.email!)
                     : null,
                 icon: const Icon(Icons.email),
                 label: const Text('Gửi email'),

@@ -1,39 +1,61 @@
-
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:io';
 import '../models/member.dart';
 import '../services/supabase_service.dart';
 import '../config/constants.dart';
 
-class AddMemberScreen extends StatefulWidget {
-  const AddMemberScreen({Key? key}) : super(key: key);
+class EditMemberScreen extends StatefulWidget {
+  final Member member;
+
+  const EditMemberScreen({Key? key, required this.member}) : super(key: key);
 
   @override
-  State<AddMemberScreen> createState() => _AddMemberScreenState();
+  State<EditMemberScreen> createState() => _EditMemberScreenState();
 }
 
-class _AddMemberScreenState extends State<AddMemberScreen> {
+class _EditMemberScreenState extends State<EditMemberScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _nameController = TextEditingController();
-  final _emailController = TextEditingController();
-  final _phoneController = TextEditingController();
-  final _descriptionController = TextEditingController();
+  late TextEditingController _nameController;
+  late TextEditingController _emailController;
+  late TextEditingController _phoneController;
+  late TextEditingController _descriptionController;
 
-  String _selectedRole = 'Developer';
+  late String _selectedRole;
   File? _selectedImage;
   bool _isLoading = false;
+  bool _imageChanged = false;
 
   final List<String> _roles = [
-    'Developer',
-    'Designer',
-    'Tester',
-    'Project Manager',
-    'Tech Lead',
-    'DevOps',
-    'Business Analyst',
-    'Intern',
+    'leader',
+    'co_lead',
+    'member',
+    'mentor',
+    'guest',
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    // Initialize controllers with existing data
+    _nameController = TextEditingController(text: widget.member.fullName);
+    _emailController = TextEditingController(text: widget.member.email ?? '');
+    _phoneController = TextEditingController(text: widget.member.phone ?? '');
+    _descriptionController = TextEditingController(
+      text: widget.member.bio ?? '',
+    );
+    _selectedRole = widget.member.role.value;
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _emailController.dispose();
+    _phoneController.dispose();
+    _descriptionController.dispose();
+    super.dispose();
+  }
 
   Future<void> _pickImage() async {
     showModalBottomSheet(
@@ -49,10 +71,14 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
                 Navigator.pop(context);
                 final image = await ImagePicker().pickImage(
                   source: ImageSource.camera,
+                  maxWidth: 1024,
+                  maxHeight: 1024,
+                  imageQuality: 85,
                 );
                 if (image != null) {
                   setState(() {
                     _selectedImage = File(image.path);
+                    _imageChanged = true;
                   });
                 }
               },
@@ -64,15 +90,19 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
                 Navigator.pop(context);
                 final image = await ImagePicker().pickImage(
                   source: ImageSource.gallery,
+                  maxWidth: 1024,
+                  maxHeight: 1024,
+                  imageQuality: 85,
                 );
                 if (image != null) {
                   setState(() {
                     _selectedImage = File(image.path);
+                    _imageChanged = true;
                   });
                 }
               },
             ),
-            if (_selectedImage != null)
+            if (widget.member.avatarPath != null)
               ListTile(
                 leading: const Icon(Icons.delete, color: Colors.red),
                 title: const Text(
@@ -83,6 +113,7 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
                   Navigator.pop(context);
                   setState(() {
                     _selectedImage = null;
+                    _imageChanged = true;
                   });
                 },
               ),
@@ -92,62 +123,71 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
     );
   }
 
-  Future<void> _saveMember() async {
+  Future<void> _updateMember() async {
     if (!_formKey.currentState!.validate()) return;
 
-    setState(() {
-      _isLoading = true;
-    });
+    setState(() => _isLoading = true);
 
     try {
-      String? imageUrl;
+      String? avatarPath = widget.member.avatarPath;
 
-      // Upload ảnh nếu có
-      if (_selectedImage != null) {
-        final fileName = 'member_${DateTime.now().millisecondsSinceEpoch}.jpg';
-        imageUrl = await SupabaseService.uploadAvatar(
-          _selectedImage!.path,
-          fileName,
-        );
+      // Upload ảnh mới nếu có thay đổi
+      if (_imageChanged) {
+        if (_selectedImage != null) {
+          // Upload ảnh mới
+          final fileName =
+              'member_${DateTime.now().millisecondsSinceEpoch}.jpg';
+          avatarPath = await SupabaseService.uploadAvatar(
+            _selectedImage!.path,
+            fileName,
+          );
+        } else {
+          // Xóa ảnh
+          avatarPath = null;
+        }
       }
 
-      // Tạo member mới
-      final newMember = Member(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
+      // Tạo member đã update
+      final updatedMember = widget.member.copyWith(
         fullName: _nameController.text.trim(),
-        email: _emailController.text.trim(),
-        phone: _phoneController.text.trim(),
+        email: _emailController.text.trim().isEmpty
+            ? null
+            : _emailController.text.trim(),
+        phone: _phoneController.text.trim().isEmpty
+            ? null
+            : _phoneController.text.trim(),
         role: MemberRole.fromString(_selectedRole),
-        avatarPath: imageUrl,
+        avatarPath: avatarPath,
         bio: _descriptionController.text.trim().isEmpty
             ? null
             : _descriptionController.text.trim(),
-        createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
       );
 
-      await SupabaseService.addMember(newMember);
+      // Gọi API update
+      final result = await SupabaseService.updateMember(updatedMember);
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Đã thêm thành viên mới'),
-            backgroundColor: Colors.green,
-          ),
-        );
-        Navigator.pop(context, true);
-      }
+      if (!mounted) return;
+
+      // Thông báo thành công
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('✅ Cập nhật thành viên thành công'),
+          backgroundColor: Colors.green,
+        ),
+      );
+
+      // Quay lại và trả về member đã update
+      Navigator.pop(context, result);
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('❌ Lỗi: $e'), backgroundColor: Colors.red),
-        );
-      }
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('❌ Lỗi: $e'), backgroundColor: Colors.red),
+      );
     } finally {
       if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
+        setState(() => _isLoading = false);
       }
     }
   }
@@ -156,17 +196,8 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Thêm thành viên'),
+        title: const Text('Chỉnh sửa thành viên'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        actions: [
-          if (_isLoading)
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16),
-              child: Center(child: CircularProgressIndicator()),
-            )
-          else
-            IconButton(onPressed: _saveMember, icon: const Icon(Icons.save)),
-        ],
       ),
       body: Form(
         key: _formKey,
@@ -193,6 +224,17 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
                               fit: BoxFit.cover,
                             ),
                           )
+                        : widget.member.avatarUrl != null && !_imageChanged
+                        ? ClipOval(
+                            child: CachedNetworkImage(
+                              imageUrl: widget.member.avatarUrl!,
+                              fit: BoxFit.cover,
+                              placeholder: (context, url) =>
+                                  const CircularProgressIndicator(),
+                              errorWidget: (context, url, error) =>
+                                  const Icon(Icons.person, size: 50),
+                            ),
+                          )
                         : const Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
@@ -203,7 +245,7 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
                               ),
                               SizedBox(height: 4),
                               Text(
-                                'Thêm ảnh',
+                                'Thay đổi ảnh',
                                 style: TextStyle(color: Colors.grey),
                               ),
                             ],
@@ -214,21 +256,20 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
 
               const SizedBox(height: 24),
 
-              // Tên
+              // Họ tên
               TextFormField(
                 controller: _nameController,
                 decoration: const InputDecoration(
                   labelText: 'Họ và tên *',
-                  border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.person),
+                  border: OutlineInputBorder(),
                 ),
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) {
-                    return 'Vui lòng nhập họ và tên';
+                    return 'Vui lòng nhập họ tên';
                   }
                   return null;
                 },
-                textCapitalization: TextCapitalization.words,
               ),
 
               const SizedBox(height: 16),
@@ -237,19 +278,16 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
               TextFormField(
                 controller: _emailController,
                 decoration: const InputDecoration(
-                  labelText: 'Email *',
-                  border: OutlineInputBorder(),
+                  labelText: 'Email',
                   prefixIcon: Icon(Icons.email),
+                  border: OutlineInputBorder(),
                 ),
                 keyboardType: TextInputType.emailAddress,
                 validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Vui lòng nhập email';
-                  }
-                  if (!RegExp(
-                    r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
-                  ).hasMatch(value)) {
-                    return 'Email không hợp lệ';
+                  if (value != null && value.isNotEmpty) {
+                    if (!value.contains('@')) {
+                      return 'Email không hợp lệ';
+                    }
                   }
                   return null;
                 },
@@ -261,20 +299,11 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
               TextFormField(
                 controller: _phoneController,
                 decoration: const InputDecoration(
-                  labelText: 'Số điện thoại *',
-                  border: OutlineInputBorder(),
+                  labelText: 'Số điện thoại',
                   prefixIcon: Icon(Icons.phone),
+                  border: OutlineInputBorder(),
                 ),
                 keyboardType: TextInputType.phone,
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Vui lòng nhập số điện thoại';
-                  }
-                  if (!RegExp(r'^[0-9+\-\s()]+$').hasMatch(value)) {
-                    return 'Số điện thoại không hợp lệ';
-                  }
-                  return null;
-                },
               ),
 
               const SizedBox(height: 16),
@@ -283,23 +312,20 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
               DropdownButtonFormField<String>(
                 value: _selectedRole,
                 decoration: const InputDecoration(
-                  labelText: 'Vai trò *',
-                  border: OutlineInputBorder(),
+                  labelText: 'Vai trò',
                   prefixIcon: Icon(Icons.work),
+                  border: OutlineInputBorder(),
                 ),
                 items: _roles.map((role) {
-                  return DropdownMenuItem(value: role, child: Text(role));
+                  return DropdownMenuItem(
+                    value: role,
+                    child: Text(_getRoleDisplayName(role)),
+                  );
                 }).toList(),
                 onChanged: (value) {
-                  setState(() {
-                    _selectedRole = value!;
-                  });
-                },
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Vui lòng chọn vai trò';
+                  if (value != null) {
+                    setState(() => _selectedRole = value);
                   }
-                  return null;
                 },
               ),
 
@@ -309,80 +335,52 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
               TextFormField(
                 controller: _descriptionController,
                 decoration: const InputDecoration(
-                  labelText: 'Mô tả (tùy chọn)',
-                  border: OutlineInputBorder(),
+                  labelText: 'Mô tả',
                   prefixIcon: Icon(Icons.description),
+                  border: OutlineInputBorder(),
                   alignLabelWithHint: true,
                 ),
-                maxLines: 3,
-                textCapitalization: TextCapitalization.sentences,
+                maxLines: 4,
+                maxLength: 500,
               ),
 
-              const SizedBox(height: 32),
+              const SizedBox(height: 24),
 
-              // Nút lưu
+              // Nút cập nhật
               ElevatedButton(
-                onPressed: _isLoading ? null : _saveMember,
+                onPressed: _isLoading ? null : _updateMember,
                 style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  backgroundColor: Theme.of(context).primaryColor,
+                  padding: const EdgeInsets.all(16),
+                  backgroundColor: Colors.orange,
                   foregroundColor: Colors.white,
                 ),
                 child: _isLoading
-                    ? const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          ),
-                          SizedBox(width: 12),
-                          Text('Đang lưu...'),
-                        ],
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
                       )
                     : const Text(
-                        'Lưu thành viên',
-                        style: TextStyle(fontSize: 16),
+                        'Cập nhật',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
               ),
 
               const SizedBox(height: 16),
 
-              // Ghi chú
-              const Card(
-                color: Colors.blue,
-                child: Padding(
-                  padding: EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(Icons.info, color: Colors.white),
-                          SizedBox(width: 8),
-                          Text(
-                            'Lưu ý:',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                      SizedBox(height: 4),
-                      Text(
-                        '• Các trường có dấu (*) là bắt buộc\n'
-                        '• Ảnh sẽ được tải lên Supabase Storage\n'
-                        '• Dữ liệu sẽ được lưu trên Supabase Database',
-                        style: TextStyle(color: Colors.white),
-                      ),
-                    ],
-                  ),
+              // Nút hủy
+              OutlinedButton(
+                onPressed: _isLoading ? null : () => Navigator.pop(context),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.all(16),
                 ),
+                child: const Text('Hủy', style: TextStyle(fontSize: 16)),
               ),
             ],
           ),
@@ -391,12 +389,20 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
     );
   }
 
-  @override
-  void dispose() {
-    _nameController.dispose();
-    _emailController.dispose();
-    _phoneController.dispose();
-    _descriptionController.dispose();
-    super.dispose();
+  String _getRoleDisplayName(String role) {
+    switch (role) {
+      case 'leader':
+        return 'Trưởng nhóm';
+      case 'co_lead':
+        return 'Phó nhóm';
+      case 'member':
+        return 'Thành viên';
+      case 'mentor':
+        return 'Cố vấn';
+      case 'guest':
+        return 'Khách mời';
+      default:
+        return role;
+    }
   }
 }

@@ -7,6 +7,7 @@ import 'package:translator/translator.dart';
 import 'package:camera/camera.dart';
 import 'dart:io';
 import 'dart:async';
+import 'camera_translate_screen.dart';
 
 class TranslateScreen extends StatefulWidget {
   const TranslateScreen({Key? key}) : super(key: key);
@@ -45,11 +46,19 @@ class _TranslateScreenState extends State<TranslateScreen>
     'th': 'ไทย',
   };
 
+  // Camera realtime variables
+  CameraController? _cameraController;
+  List<CameraDescription>? _cameras;
+  bool _isCameraInitialized = false;
+  Timer? _realtimeTimer;
+  String _realtimeTranslatedText = '';
+
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     _initializeMLKit();
+    _initializeCamera();
   }
 
   void _initializeMLKit() async {
@@ -64,6 +73,66 @@ class _TranslateScreenState extends State<TranslateScreen>
         orElse: () => TranslateLanguage.english,
       ),
     );
+  }
+
+  Future<void> _initializeCamera() async {
+    try {
+      _cameras = await availableCameras();
+      if (_cameras != null && _cameras!.isNotEmpty) {
+        _cameraController = CameraController(
+          _cameras![0],
+          ResolutionPreset.medium,
+          enableAudio: false,
+        );
+        await _cameraController!.initialize();
+        setState(() {
+          _isCameraInitialized = true;
+        });
+      }
+    } catch (e) {
+      print('Error initializing camera: $e');
+    }
+  }
+
+  void _startRealtimeTranslation() {
+    _realtimeTimer?.cancel();
+    _realtimeTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
+      _captureAndTranslate();
+    });
+  }
+
+  void _stopRealtimeTranslation() {
+    _realtimeTimer?.cancel();
+    _realtimeTimer = null;
+  }
+
+  Future<void> _captureAndTranslate() async {
+    if (_cameraController == null || !_cameraController!.value.isInitialized) {
+      return;
+    }
+
+    try {
+      final XFile picture = await _cameraController!.takePicture();
+      final inputImage = InputImage.fromFilePath(picture.path);
+
+      final RecognizedText recognizedText = await _textRecognizer.processImage(
+        inputImage,
+      );
+
+      if (recognizedText.text.isNotEmpty) {
+        final translation = await _translator.translate(
+          recognizedText.text,
+          from: _selectedFromLanguage,
+          to: _selectedToLanguage,
+        );
+
+        setState(() {
+          _realtimeTranslatedText = translation.text;
+        });
+      }
+    } catch (e) {
+      print('Error in realtime translation: $e');
+    }
   }
 
   Future<void> _translateText(String text) async {
@@ -673,6 +742,199 @@ class _TranslateScreenState extends State<TranslateScreen>
     );
   }
 
+  Widget _buildCameraRealtimeTab() {
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Language Selectors
+          Row(
+            children: [
+              Expanded(
+                child: _buildLanguageSelector(
+                  'Từ',
+                  _selectedFromLanguage,
+                  (value) => setState(() => _selectedFromLanguage = value!),
+                ),
+              ),
+              const SizedBox(width: 16),
+              IconButton(
+                onPressed: () {
+                  setState(() {
+                    final temp = _selectedFromLanguage;
+                    _selectedFromLanguage = _selectedToLanguage;
+                    _selectedToLanguage = temp;
+                  });
+                },
+                icon: const Icon(Icons.swap_horiz),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _buildLanguageSelector(
+                  'Đến',
+                  _selectedToLanguage,
+                  (value) => setState(() => _selectedToLanguage = value!),
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 20),
+
+          // Camera Preview
+          Expanded(
+            flex: 3,
+            child: _isCameraInitialized && _cameraController != null
+                ? Stack(
+                    children: [
+                      // Camera Preview
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: CameraPreview(_cameraController!),
+                      ),
+
+                      // Overlay with translation result
+                      if (_realtimeTranslatedText.isNotEmpty)
+                        Positioned(
+                          bottom: 0,
+                          left: 0,
+                          right: 0,
+                          child: Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.7),
+                              borderRadius: const BorderRadius.only(
+                                bottomLeft: Radius.circular(12),
+                                bottomRight: Radius.circular(12),
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Text(
+                                  'Dịch Realtime:',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  _realtimeTranslatedText,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                    ],
+                  )
+                : Card(
+                    child: Container(
+                      height: 300,
+                      child: const Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.camera_alt,
+                              size: 64,
+                              color: Colors.grey,
+                            ),
+                            SizedBox(height: 16),
+                            Text(
+                              'Đang khởi tạo camera...',
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: Colors.grey,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+          ),
+
+          const SizedBox(height: 20),
+
+          // Control Buttons
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: _realtimeTimer == null
+                      ? _startRealtimeTranslation
+                      : _stopRealtimeTranslation,
+                  icon: Icon(
+                    _realtimeTimer == null ? Icons.play_arrow : Icons.stop,
+                  ),
+                  label: Text(_realtimeTimer == null ? 'Bắt đầu' : 'Dừng lại'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _realtimeTimer == null
+                        ? Colors.green
+                        : Colors.red,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.all(16),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              ElevatedButton.icon(
+                onPressed: _captureAndTranslate,
+                icon: const Icon(Icons.camera_alt),
+                label: const Text('Chụp 1 lần'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.all(16),
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 16),
+
+          // Instructions
+          Card(
+            color: Colors.blue[50],
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  Icon(Icons.info_outline, color: Colors.blue[700], size: 28),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Hướng dẫn sử dụng Camera Realtime',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blue[700],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    '• Nhấn "Bắt đầu" để dịch liên tục mỗi 2 giây\n'
+                    '• Nhấn "Chụp 1 lần" để dịch ngay lập tức\n'
+                    '• Hướng camera vào văn bản cần dịch\n'
+                    '• Kết quả dịch sẽ hiện ở cuối màn hình',
+                    style: TextStyle(fontSize: 13),
+                    textAlign: TextAlign.left,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -681,10 +943,12 @@ class _TranslateScreenState extends State<TranslateScreen>
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         bottom: TabBar(
           controller: _tabController,
+          isScrollable: true,
           tabs: const [
             Tab(icon: Icon(Icons.text_fields), text: 'Văn bản'),
             Tab(icon: Icon(Icons.mic), text: 'Giọng nói'),
             Tab(icon: Icon(Icons.image), text: 'Hình ảnh'),
+            Tab(icon: Icon(Icons.camera), text: 'Realtime'),
           ],
         ),
       ),
@@ -694,7 +958,21 @@ class _TranslateScreenState extends State<TranslateScreen>
           _buildTextTranslateTab(),
           _buildVoiceTranslateTab(),
           _buildImageTranslateTab(),
+          _buildCameraRealtimeTab(),
         ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const CameraTranslateScreen(),
+            ),
+          );
+        },
+        icon: const Icon(Icons.camera_alt),
+        label: const Text('Camera Realtime'),
+        backgroundColor: Colors.blue,
       ),
     );
   }
@@ -705,6 +983,8 @@ class _TranslateScreenState extends State<TranslateScreen>
     _tabController?.dispose();
     _textRecognizer.close();
     _onDeviceTranslator.close();
+    _cameraController?.dispose();
+    _realtimeTimer?.cancel();
     super.dispose();
   }
 }
